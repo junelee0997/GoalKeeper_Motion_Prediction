@@ -7,11 +7,10 @@ class Encoder(nn.Module):
         self.input_dim = input_dim
         self.hid_dim = hid_dim
         self.n_layer= n_layer
-        self.rnn = nn.GRU(input_dim, hid_dim, n_layer)
+        self.rnn = nn.GRUCell(input_dim, hid_dim, n_layer)
     def forward(self, src, hidden):
-        outputs, hidden = self.rnn(src, hidden)
-        outputs = torch.add(outputs, src)
-        return outputs, hidden
+        hidden = self.rnn(src, hidden)
+        return hidden
 
 class Decoder(nn.Module):
     def __init__(self, output_dim, hid_dim, n_layer):
@@ -19,13 +18,12 @@ class Decoder(nn.Module):
         self.output_dim = output_dim
         self.hid_dim = hid_dim
         self.n_layer = n_layer
-        self.rnn = nn.GRU(output_dim, hid_dim, n_layer)
+        self.rnn = nn.GRUCell(output_dim, hid_dim, n_layer)
         self.fc_out = nn.Linear(hid_dim, output_dim)
 
     def forward(self, input, hidden):
-        #input = input.veiw(1, -1)
-        output, hidden = self.rnn(input, hidden)
-        prediction = torch.add(input, self.fc_out(output))
+        hidden = self.rnn(input, hidden)
+        prediction = torch.add(input, self.fc_out(hidden))
         return prediction, hidden
 class Seq2Seq(nn.Module):
     def __init__(self, goal_encoder, goal_decoder, kick_encoder, device):
@@ -33,24 +31,25 @@ class Seq2Seq(nn.Module):
         self.goal_encoder = goal_encoder
         self.goal_decoder = goal_decoder
         self.kick_encoder = kick_encoder
-        self.w1 = torch.randn(1)
-        self.w2 = torch.randn(1)
+        self.hid_out = nn.Linear(2048, 1024)
+        self.hid_out2 = nn.Linear(2048, 1024)
         self.device = device
-    def forward(self, input_goal , input_kick , output):
-        outputs = torch.zeros(output.shape[0], output.shape[1] , self.decoder.output_dim).to(self.device)
-        encoder_stat_kick = torch.zeros()
-        encoder_stat_goal = torch.zeros()
-        for i in range(input.shape[0] - 1):
-            encoder_out_goal, encoder_stat_goal = self.goal_encoder(input_goal[i], encoder_stat_goal)
-            encoder_out_kick, encoder_stat_kick = self.kick_encoder(input_kick[i], encoder_stat_kick)
-            temp = copy.deepcopy(encoder_stat_kick)
-            encoder_stat_kick = torch.add(self.w1 * encoder_stat_kick, (1 - self.w1) * encoder_stat_goal)
-            encoder_stat_goal = torch.add(self.w2 * temp, (1 - self.w2) * encoder_stat_goal)
+    def forward(self, input , output):
+        outputs = torch.zeros(output.shape[0], output.shape[1], self.goal_decoder.output_dim, dtype=torch.float32).to(self.device)
+        encoder_stat_kick = torch.zeros(input.shape[0], self.kick_encoder.hid_dim, dtype=torch.float32).to(self.device)
+        encoder_stat_goal = torch.zeros(input.shape[0], self.goal_encoder.hid_dim, dtype=torch.float32).to(self.device)
+        encode_size = input.shape[1] // 2 - 1
+        for i in range(encode_size):
+            encoder_stat_goal = self.goal_encoder(input[:, i * 2, :], encoder_stat_goal)
+            encoder_stat_kick = self.kick_encoder(input[:, i * 2 + 1, :], encoder_stat_kick)
+            temp = torch.concat((encoder_stat_goal, encoder_stat_kick), dim=1)
+            encoder_stat_kick = self.hid_out(temp)
+            encoder_stat_goal = self.hid_out2(temp)
 
         decoder_hidden = encoder_stat_goal.to(self.device)
-        decoder_input = torch.tensor(input[-1], device=self.device)
-        for t in range(output.shape[0]):
-            decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
-            outputs[t] = decoder_output
+        decoder_input = input[:, -2, :].to(self.device)
+        for t in range(output.shape[1]):
+            decoder_output, decoder_hidden = self.goal_decoder(decoder_input, decoder_hidden)
+            outputs[:, t, :] = decoder_output
             decoder_input = decoder_output
         return outputs
