@@ -2,3 +2,7 @@ bin
 lib
 pyvenv.cfg
 share
+data/*
+train/*
+datacrawl.py
+test.py
