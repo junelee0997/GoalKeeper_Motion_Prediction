@@ -2,8 +2,9 @@ import torch
 import numpy as np
 
 max_frame = 12
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def make_joint_vector(read_data, norm=True):
-    data = torch.tensor(read_data).to(dtype=torch.float32)
+    data = torch.tensor(read_data).to(device = device, dtype=torch.float32)
     data = data.view(-1, 51)
     frame_size = data.shape[0]
 

@@ -18,6 +18,7 @@ data_count = 37#1000
 iterations = 100000
 check_step = 1000
 max_frame = 12
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 firstdir = os.listdir('./data')[0]
 goal_dataset = torch.from_numpy(np.load('./data/' + firstdir, allow_pickle=True)['reconstruction']).reshape(2, -1, 51)
@@ -49,7 +50,6 @@ eval = DataLoader(dataset=eval, batch_size=batch_size, shuffle=False)
 
 torch.manual_seed(1)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 goal_encode = NS.Encoder(human_size, rnn_size, 1)
 kick_encode = NS.Encoder(human_size, rnn_size, 1)
 decode = NS.Decoder(human_size, rnn_size, 1)
@@ -92,7 +92,7 @@ for epoch in range(ep, epochs + 1):
             loss = criterion(pred, y)
             test_loss += loss.item()
     print(f"Epoch {epoch + 1} - test loss: {test_loss / ev_length:.4f}")
-    if (epoch + 1) % 1000 == 0:
+    if (epoch + 1) % check_step == 0:
         torch.save(
             {
                 "model": "Dual-Rnn-Model",
